@@ -1,0 +1,11 @@
+{
+    // Enable format on save
+    "editor.formatOnSave": true,
+    // Use Black as the default formatter for Python
+    "python.formatting.provider": "black",
+    // Optional: Pass any arguments to Black (e.g., max line length)
+    "python.formatting.blackArgs": [
+        "--line-length",
+        "88"
+    ]
+}

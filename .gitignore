@@ -1,0 +1,8 @@
+# Ignore everything in images
+/images/**
+# Keep the folder structure
+!/images/
+!/images/**/
+# Keep only these files (any depth)
+!/images/**/input.png
+!/images/**/size.txt
