@@ -7,7 +7,7 @@ from typing import List, Optional
 import cv2
 
 
-def scale_down_image_from_array(img_arr: np.ndarray, block_size: int, output_path: str):
+def scale_down_image_from_array(img_arr: np.ndarray, block_size: int):
     """
     Scale down the image (provided as a NumPy array) to (image_size / block_size)
     using the nearest neighbor method and save it to the specified output path.
@@ -24,8 +24,7 @@ def scale_down_image_from_array(img_arr: np.ndarray, block_size: int, output_pat
     scaled_img = img.resize((new_width, new_height), Image.NEAREST)
 
     # Save the scaled image
-    scaled_img.save(output_path)
-    print(f"Scaled image saved to {output_path}")
+    return scaled_img
 
 
 def quantize_by_median(
@@ -116,176 +115,35 @@ def quantize_by_median(
     # 6. Convert the NumPy array back to a PIL image
     new_img = Image.fromarray(new_pixels.astype("uint8"), "RGB")
 
-    # 7. Optionally save the image to a file
-    if output_path:
-        try:
-            new_img.save(output_path)
-            print(f"✅ Processed image saved to '{output_path}'")
-        except Exception as e:
-            print(f"❌ Error saving image: {e}")
-
     return new_img
 
 
-def get_median_of_differences(data: List[int]) -> float:
-    if len(data) < 2:
-        return 0.0
-
-    # Convert the list to a NumPy array for efficient vectorized operations
-    arr = np.array(data)
-
-    # Calculate the absolute difference between each adjacent element
-    # This is done by subtracting the array from a shifted version of itself
-    differences = np.abs(arr[1:] - arr[:-1])
-
-    # Calculate and return the median of the resulting differences
-    median_value = np.median(differences)
-
-    return int(median_value)
-
-
-def line_already_found(x, lines, offset) -> bool:
-    for i in range(-offset, offset):
-        if x + i in lines:
-            # print("line: ", x + i, "already found")
-            return True
-    return False
-
-
-def draw_edge_lines(
-    arr: np.ndarray, v_lines, h_lines, image_height, image_width, output_edge_lines
-) -> np.ndarray:
-    line_color = (0, 0, 0)
-    thickness = 1
-    # Draw all vertical lines
-    for x_coord in v_lines:
-        start_point = (x_coord, 0)
-        end_point = (x_coord, image_height)
-        cv2.line(
-            arr,
-            start_point,
-            end_point,
-            line_color,
-            thickness,
-        )
-
-    # Draw all horizontal lines
-    for y_coord in h_lines:
-        start_point = (0, y_coord)
-        end_point = (image_width, y_coord)
-        cv2.line(
-            arr,
-            start_point,
-            end_point,
-            line_color,
-            thickness,
-        )
-    Image.fromarray(arr, mode="RGB").save(output_edge_lines)
-    print(f"Saved rectified image → {output_edge_lines}")
-
-
-def calculate_lines(
-    img_arr: np.ndarray, image_height: int, image_width: int, cell_size: int
-):
-    block_size = 3
-    threshold = 35
-    jump = int(cell_size / 2)
-    v_lines, h_lines = [], []
-    y = 0
-    shortener = 1
-
-    while y < image_height / shortener:
-        if y + block_size >= image_height:
-            y += 1
-            continue
-        y0, y1 = y, y + block_size
-        x = 0
-        h_line_found = False
-        while x < image_width / shortener:
-            if line_already_found(x + block_size, v_lines, jump):
-                x += jump
-                continue
-            if x + block_size >= image_width:
-                x += 1
-                continue
-
-            x0, x1 = x, x + block_size
-            block = img_arr[y0:y1, x0:x1]
-            h_block = img_arr[y0:y1, x1 : x1 + block_size]
-            v_block = img_arr[y1 : y1 + block_size, x0:x1]
-
-            m = np.median(block.reshape(-1, 3), axis=0)
-            h_m = np.median(h_block.reshape(-1, 3), axis=0)
-            v_m = np.median(v_block.reshape(-1, 3), axis=0)
-
-            h_diff = np.abs(h_m - m)
-            v_diff = np.abs(v_m - m)
-
-            h_diff_sum = h_diff.sum()
-            v_diff_sum = v_diff.sum()
-
-            if h_diff_sum > threshold:
-                v_lines.append(x + block_size)
-                x += jump
-            else:
-                x += 1
-
-            if v_diff_sum > threshold and not h_line_found:
-                h_lines.append(y + block_size)
-                y += jump
-                h_line_found = True
-        y += 1
-
-    # add one last vertical and horizontal line at the end and one line at the beginning
-    v_lines.insert(0, 0)
-    h_lines.insert(0, 0)
-    v_lines.append(image_width - 1)
-    h_lines.append(image_height - 1)
-
-    v_lines.sort()
-    h_lines.sort()
-
-    return v_lines, h_lines
-
-
 def rectify(
-    img_arr: np.ndarray,
-    image_height: int,
-    image_width: int,
-    estimated_cell_size: int,
-    output_edge_lines: str,
-):
-
-    v_lines, h_lines = calculate_lines(
-        img_arr, image_height, image_width, estimated_cell_size
-    )
-    # print("v_lines len: ", len(v_lines))
-    # print("v_lines len: ", v_lines)
-    cell_size = get_median_of_differences(v_lines)
-    print("Actual cellSize: ", cell_size)
-    # print("h_lines len: ", len(h_lines))
-    # print("h_lines: ", h_lines)
-    output_image_with_lines = img_arr.copy()
-
-    cells_x = len(v_lines) - 1
-    cells_y = len(h_lines) - 1
-    new_image_width = cells_x * cell_size
-    new_image_height = cells_y * cell_size
-    out = np.zeros((new_image_height, new_image_width, 3), dtype=np.uint8)
+    img_arr: np.ndarray, image_height: int, image_width: int, cell_size: int
+) -> np.ndarray:
+    """
+    Builds the corrected image in the same size of the original one:
+    • Each logical pixel → exactly `cell_size`×`cell_size`
+    • Colour of each block = median RGB of the original block
+    """
+    cells_x = math.ceil(image_width / cell_size)
+    cells_y = math.ceil(image_height / cell_size)
+    print("cells_x: ", cells_x)
+    print("cells_y: ", cells_y)
+    out = np.zeros((image_height, image_width, 3), dtype=np.uint8)
+    divider = 4
 
     for y in range(cells_y):
         y0, y1 = int(y * cell_size), int((y + 1) * cell_size)
-        y_mid = (h_lines[y + 1] - h_lines[y]) / 2
         y0_inner, y1_inner = (
-            int(h_lines[y] + y_mid - 1),
-            int(h_lines[y] + y_mid + 2),
+            int(y * cell_size + (cell_size / divider)),
+            int((y + 1) * cell_size - (cell_size / divider)),
         )
         for x in range(cells_x):
             x0, x1 = int(x * cell_size), int((x + 1) * cell_size)
-            x_mid = (v_lines[x + 1] - v_lines[x]) / 2
             x0_inner, x1_inner = (
-                int(v_lines[x] + x_mid - 1),
-                int(v_lines[x] + x_mid + 2),
+                int(x * cell_size + (cell_size / divider)),
+                int((x + 1) * cell_size - (cell_size / divider)),
             )
             block = img_arr[y0_inner:y1_inner, x0_inner:x1_inner]
             # block = img_arr[y0:y1, x0:x1]
@@ -294,23 +152,14 @@ def rectify(
 
             # Use median to stay closer to the palette & reject noise
             med_color = np.median(block.reshape(-1, 3), axis=0)
+            index_y = int((y + 1) * cell_size - 1)
+            index_x = int((x + 1) * cell_size - 1)
             # print("index_y: ", index_y)
             # print("index_x: ", index_x)
             # med_color = img_arr[index_y][index_x]
-            # print("med_color: ", med_color)
-
             out[y0:y1, x0:x1] = med_color.astype(np.uint8)
 
-    draw_edge_lines(
-        output_image_with_lines,
-        v_lines,
-        h_lines,
-        image_height,
-        image_width,
-        output_edge_lines,
-    )
-
-    return out, cell_size
+    return out
 
 
 def main(
@@ -333,15 +182,26 @@ def main(
         print(f"Error reading cell size from {size_path}: {e}")
         sys.exit(1)
 
-    corrected_arr, cell_size = rectify(
-        arr, img_height, img_width, estimated_cell_size, output_edge_lines
-    )
+    corrected_arr = rectify(arr, img_height, img_width, estimated_cell_size)
 
     Image.fromarray(corrected_arr, mode="RGB").save(out_path)
     print(f"Saved rectified image → {out_path}")
 
-    scale_down_image_from_array(corrected_arr, cell_size, out_scaled_path)
-    quantize_by_median(out_scaled_path, 8, out_unified_palette)
+    scaled_img = scale_down_image_from_array(corrected_arr, estimated_cell_size)
+    if out_scaled_path:
+        try:
+            scaled_img.save(out_scaled_path)
+            print(f"✅ Scaled image saved to '{output_path}'")
+        except Exception as e:
+            print(f"❌ Error saving image: {e}")
+
+    quantized_img = quantize_by_median(out_scaled_path, 8, out_unified_palette)
+    if out_unified_palette:
+        try:
+            quantized_img.save(out_unified_palette)
+            print(f"✅ Quantized image saved to '{output_path}'")
+        except Exception as e:
+            print(f"❌ Error saving image: {e}")
 
 
 if __name__ == "__main__":
