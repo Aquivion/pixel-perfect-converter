@@ -6,3 +6,6 @@
 # Keep only these files (any depth)
 !/images/**/input.png
 !/images/**/size.txt
+
+# Ignore .venv
+.venv
