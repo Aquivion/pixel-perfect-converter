@@ -7,5 +7,8 @@
 !/images/**/input.png
 !/images/**/size.txt
 
+# Ignore pycache
+**/__pycache__/
+
 # Ignore .venv
 .venv
