@@ -6,7 +6,9 @@ import numpy as np
 from .params import PipelineParams
 from .processing.edges import ensure_3channel, gaussian_blur, canny_edges, morphology
 from .processing.lines import hough_lines_filtered, cluster_1d
+from .processing.lines import estimate_spacing, complete_grid
 from .processing.overlay import draw_edges_overlay, draw_grid_overlay
+from .processing.resample import create_pixel_art, upscale_pixel_art
 
 
 @dataclass
@@ -20,6 +22,13 @@ class PipelineResult:
     kept_lines: List[Dict]
     clustered_x: List[float]
     clustered_y: List[float]
+    spacing_x: float
+    spacing_y: float
+    completed_x: List[float]
+    completed_y: List[float]
+    completed_grid_overlay: np.ndarray
+    final_pixel_art: np.ndarray
+    upscaled_pixel_art: np.ndarray
     low_t: int
     high_t: int
 
@@ -71,7 +80,18 @@ def run_pipeline(bgr_in: np.ndarray, p: PipelineParams) -> PipelineResult:
     clustered_x = cluster_1d(grid_x, p.cluster.eps)
     clustered_y = cluster_1d(grid_y, p.cluster.eps)
 
+    h, w = bgr.shape[:2]
+    spacing_x, _ = estimate_spacing(clustered_x)
+    spacing_y, _ = estimate_spacing(clustered_y)
+
+    completed_x = complete_grid(clustered_x, spacing_x, 0.0, float(w - 1))
+    completed_y = complete_grid(clustered_y, spacing_y, 0.0, float(h - 1))
+
     grid_overlay = draw_grid_overlay(bgr, clustered_x, clustered_y)
+    completed_grid_overlay = draw_grid_overlay(bgr, completed_x, completed_y)
+
+    final_pixel_art = create_pixel_art(bgr, completed_x, completed_y)
+    upscaled_pixel_art = upscale_pixel_art(final_pixel_art, bgr.shape[1], bgr.shape[0])
 
     return PipelineResult(
         bgr=bgr,
@@ -83,6 +103,13 @@ def run_pipeline(bgr_in: np.ndarray, p: PipelineParams) -> PipelineResult:
         kept_lines=kept_lines,
         clustered_x=clustered_x,
         clustered_y=clustered_y,
+        spacing_x=spacing_x,
+        spacing_y=spacing_y,
+        completed_x=completed_x,
+        completed_y=completed_y,
+        completed_grid_overlay=completed_grid_overlay,
+        final_pixel_art=final_pixel_art,
+        upscaled_pixel_art=upscaled_pixel_art,
         low_t=low_t,
         high_t=high_t,
     )

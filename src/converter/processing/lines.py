@@ -70,3 +70,104 @@ def hough_lines_filtered(
             grid_y.append((y1 + y2) / 2.0)
 
     return kept_lines, grid_x, grid_y
+
+
+def estimate_spacing(positions: List[float]) -> Tuple[float, List[float]]:
+    """
+    Estimate grid spacing using median of inlier diffs (robust to outliers).
+    Returns (spacing, inlier_diffs). spacing = 0 if cannot estimate.
+    """
+    if len(positions) < 2:
+        return 0.0, []
+    ps = np.sort(np.array(positions, dtype=float))
+    diffs = np.diff(ps)
+    # Remove zero / near-zero accidental duplicates
+    diffs = diffs[diffs > 0.5]
+    if len(diffs) == 0:
+        return 0.0, []
+    med = float(np.median(diffs))
+    abs_dev = np.abs(diffs - med)
+    mad = float(np.median(abs_dev))
+    if mad == 0:
+        # Fallback: keep diffs within 25% of median
+        inliers = diffs[np.abs(diffs - med) <= 0.25 * med]
+    else:
+        # Standard robust threshold ~2.5 * MAD
+        inliers = diffs[abs_dev <= 2.5 * mad]
+    if len(inliers) == 0:
+        return 0.0, []
+    spacing = float(np.median(inliers))
+    return spacing, list(map(float, inliers))
+
+
+def complete_grid(
+    positions: List[float],
+    spacing: float,
+    min_bound: float,
+    max_bound: float,
+    jitter_frac: float = 0.3,
+    max_multi: int = 6,
+) -> List[float]:
+    """
+    Build a completed grid:
+      1. Optionally fill internal gaps that are multiples of spacing (within tolerance).
+      2. Extend backward / forward to bounds.
+      3. Merge near-duplicates.
+    jitter_frac: fractional tolerance vs spacing for merging & accepting subdivided gaps.
+    max_multi: maximum gap multiple to try to subdivide (prevents runaway insertion).
+    """
+    if spacing <= 0 or not positions:
+        return positions
+
+    existing = sorted(float(p) for p in positions)
+    tol = max(1.0, spacing * jitter_frac)
+
+    # ---- 1. Fill internal gaps ----
+    filled = [existing[0]]
+    for curr in existing[1:]:
+        prev = filled[-1]
+        gap = curr - prev
+        if gap > spacing + tol:
+            n = int(round(gap / spacing))
+            if 2 <= n <= max_multi:
+                candidate_interval = gap / n
+                if abs(candidate_interval - spacing) <= spacing * jitter_frac:
+                    # Insert n-1 intermediate lines
+                    for k in range(1, n):
+                        filled.append(prev + k * candidate_interval)
+        filled.append(curr)
+
+    # ---- 2. Extend backward & forward ----
+    first = filled[0]
+    back = []
+    v = first
+    while v - spacing >= min_bound - tol:
+        v -= spacing
+        back.append(v)
+
+    last = filled[-1]
+    forward = []
+    v = last
+    while v + spacing <= max_bound + tol:
+        v += spacing
+        forward.append(v)
+
+    all_lines = sorted(back + filled + forward)
+
+    # ---- 3. Merge close lines & clamp ----
+    merged: List[float] = []
+    for val in all_lines:
+        if not merged or abs(val - merged[-1]) > tol:
+            merged.append(val)
+        else:
+            merged[-1] = (merged[-1] + val) / 2.0  # average cluster
+
+    clamped = [float(min(max(val, min_bound), max_bound)) for val in merged]
+
+    # Remove any residual near duplicates after clamping (tight threshold)
+    final: List[float] = []
+    for v in clamped:
+        if not final or abs(v - final[-1]) > 0.5:
+            final.append(v)
+
+    return final

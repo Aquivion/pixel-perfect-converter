@@ -214,9 +214,37 @@ with col1:
     st.image(cv2.cvtColor(res.edges_vis, cv2.COLOR_BGR2RGB), width="content")
 with col2:
     st.subheader("Edge Overlay")
-    st.image(cv2.cvtColor(res.overlay_bgr, cv2.COLOR_BGR2RGB), width="content")
+    st.image(cv2.cvtColor(res.overlay_bgr, cv2.COLOR_BGR2RGB), use_container_width=True)
     st.subheader("Clustered Grid Overlay")
-    st.image(cv2.cvtColor(res.grid_overlay, cv2.COLOR_BGR2RGB), width="content")
+    st.image(
+        cv2.cvtColor(res.grid_overlay, cv2.COLOR_BGR2RGB), use_container_width=True
+    )
+
+# --- New Layout for Final Results ---
+st.markdown("---")
+
+col3, col4 = st.columns(2, gap="large")
+with col3:
+    st.markdown("### Completed Grid Overlay")
+    st.image(
+        cv2.cvtColor(res.completed_grid_overlay, cv2.COLOR_BGR2RGB),
+        use_container_width=True,
+    )
+    st.markdown(
+        f"Estimated spacing X: {res.spacing_x:.2f} px | Y: {res.spacing_y:.2f} px "
+        "(0 means insufficient data)"
+    )
+
+with col4:
+    st.markdown("### Upscaled Pixel Art")
+    st.image(
+        cv2.cvtColor(res.upscaled_pixel_art, cv2.COLOR_BGR2RGB),
+        use_container_width=True,
+    )
+
+st.markdown("### Final Pixel Art (Logical)")
+st.image(cv2.cvtColor(res.final_pixel_art, cv2.COLOR_BGR2RGB), width="content")
+
 
 # Downloads
 st.markdown("---")
@@ -225,6 +253,9 @@ st.subheader("Download results")
 edges_bytes = to_png_bytes(res.edges_vis)
 overlay_bytes = to_png_bytes(res.overlay_bgr)
 grid_bytes = to_png_bytes(res.grid_overlay)
+completed_grid_bytes = to_png_bytes(res.completed_grid_overlay)
+final_pixel_art_bytes = to_png_bytes(res.final_pixel_art)
+upscaled_pixel_art_bytes = to_png_bytes(res.upscaled_pixel_art)
 raw_json = {
     "kept_lines": res.kept_lines,
     "notes": "Segments filtered to near-horizontal/vertical by angle tolerance.",
@@ -232,6 +263,9 @@ raw_json = {
 clustered_json = {
     "grid_x": res.clustered_x,
     "grid_y": res.clustered_y,
+    "spacing": {"x": res.spacing_x, "y": res.spacing_y},
+    "completed_x": res.completed_x,
+    "completed_y": res.completed_y,
     "params": {
         "scale": params.preprocess.scale,
         "use_sigma": params.canny.use_sigma,
@@ -269,6 +303,24 @@ st.download_button(
     "Download grid_overlay.png",
     data=grid_bytes,
     file_name="grid_overlay.png",
+    mime="image/png",
+)
+st.download_button(
+    "Download completed_grid_overlay.png",
+    data=completed_grid_bytes,
+    file_name="completed_grid_overlay.png",
+    mime="image/png",
+)
+st.download_button(
+    "Download final_pixel_art.png",
+    data=final_pixel_art_bytes,
+    file_name="final_pixel_art.png",
+    mime="image/png",
+)
+st.download_button(
+    "Download upscaled_pixel_art.png",
+    data=upscaled_pixel_art_bytes,
+    file_name="upscaled_pixel_art.png",
     mime="image/png",
 )
 st.download_button(
