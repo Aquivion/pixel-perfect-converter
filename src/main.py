@@ -1,5 +1,4 @@
 import json
-from typing import Tuple
 import numpy as np
 import cv2
 import streamlit as st
@@ -25,19 +24,19 @@ from converter.preset_management import (
 
 st.set_page_config(page_title="Canny + Hough Grid Tuner", layout="wide")
 
-# --- Preset Loading and State Initialization ---
+# --- State Management and Helper ---
 if "params" not in st.session_state:
     st.session_state.params = asdict(PipelineParams())
 
 
-def _load_preset_callback():
-    preset_name = st.session_state.get("preset_selector")
-    if preset_name and preset_name != "None":
-        loaded_params = load_preset(preset_name)
-        if loaded_params:
-            st.session_state.params = loaded_params
+# Helper to bridge widget keys with the nested session state dictionary
+def update_param(category: str, param_name: str):
+    key = f"{category}_{param_name}"
+    if key in st.session_state:
+        st.session_state.params[category][param_name] = st.session_state[key]
 
 
+# --- UI ---
 st.title("Canny + Hough Grid Tuner")
 
 uploaded = st.file_uploader(
@@ -47,153 +46,235 @@ uploaded = st.file_uploader(
 with st.sidebar:
     st.header("Presets")
     available_presets = ["None"] + get_available_presets()
-    st.selectbox(
-        "Load Preset",
+
+    # Use a standard key for the selectbox
+    preset_to_load = st.selectbox(
+        "Select Preset",
         options=available_presets,
-        key="preset_selector",
-        on_change=_load_preset_callback,
+        index=0,  # Default to "None"
     )
+
+    # Add a dedicated button to trigger the load
+    if st.button("Load Preset"):
+        if preset_to_load and preset_to_load != "None":
+            loaded_params = load_preset(preset_to_load)
+            if loaded_params:
+                st.session_state.params = loaded_params
+                st.success(f"Loaded preset '{preset_to_load}'")
 
     preset_name_to_save = st.text_input("Save as preset name")
     if st.button("Save Preset"):
         if preset_name_to_save:
             save_preset(preset_name_to_save, st.session_state.params)
             st.success(f"Saved preset '{preset_name_to_save}'")
+            # Refresh available presets list
+            st.rerun()
         else:
             st.warning("Please enter a name for the preset.")
 
     st.header("Preprocess")
-    st.session_state.params["preprocess"]["scale"] = st.number_input(
+    st.number_input(
         "Scale (nearest-neighbor integer)",
         min_value=1,
         max_value=8,
         value=st.session_state.params["preprocess"]["scale"],
-        step=1,
+        key="preprocess_scale",
+        on_change=update_param,
+        args=("preprocess", "scale"),
     )
-    st.session_state.params["preprocess"]["blur"] = st.number_input(
+    st.number_input(
         "Gaussian blur kernel (odd, 0=off)",
         min_value=0,
         max_value=31,
         value=st.session_state.params["preprocess"]["blur"],
-        step=1,
+        key="preprocess_blur",
+        on_change=update_param,
+        args=("preprocess", "blur"),
     )
 
     st.header("Canny")
-    st.session_state.params["canny"]["use_sigma"] = st.checkbox(
+    st.checkbox(
         "Use auto thresholds (sigma)",
         value=st.session_state.params["canny"]["use_sigma"],
+        key="canny_use_sigma",
+        on_change=update_param,
+        args=("canny", "use_sigma"),
     )
-    st.session_state.params["canny"]["sigma"] = st.slider(
-        "sigma", 0.00, 1.00, st.session_state.params["canny"]["sigma"], 0.01
+    st.slider(
+        "sigma",
+        0.00,
+        1.00,
+        value=st.session_state.params["canny"]["sigma"],
+        key="canny_sigma",
+        on_change=update_param,
+        args=("canny", "sigma"),
     )
-    st.session_state.params["canny"]["low"] = st.slider(
-        "low", 0, 255, st.session_state.params["canny"]["low"], 1
+    st.slider(
+        "low",
+        0,
+        255,
+        value=st.session_state.params["canny"]["low"],
+        key="canny_low",
+        on_change=update_param,
+        args=("canny", "low"),
     )
-    st.session_state.params["canny"]["high"] = st.slider(
-        "high", 0, 255, st.session_state.params["canny"]["high"], 1
+    st.slider(
+        "high",
+        0,
+        255,
+        value=st.session_state.params["canny"]["high"],
+        key="canny_high",
+        on_change=update_param,
+        args=("canny", "high"),
     )
 
     st.header("Morphology")
-    st.session_state.params["morph"]["close_k"] = st.number_input(
+    st.number_input(
         "Closing kernel size (0=off)",
         min_value=0,
         max_value=51,
         value=st.session_state.params["morph"]["close_k"],
-        step=1,
+        key="morph_close_k",
+        on_change=update_param,
+        args=("morph", "close_k"),
     )
-    st.session_state.params["morph"]["close_iter"] = st.number_input(
+    st.number_input(
         "Closing iterations",
         min_value=1,
         max_value=10,
         value=st.session_state.params["morph"]["close_iter"],
-        step=1,
+        key="morph_close_iter",
+        on_change=update_param,
+        args=("morph", "close_iter"),
     )
-    st.session_state.params["morph"]["dilate_iter"] = st.number_input(
+    st.number_input(
         "Dilate iterations",
         min_value=0,
         max_value=10,
         value=st.session_state.params["morph"]["dilate_iter"],
-        step=1,
+        key="morph_dilate_iter",
+        on_change=update_param,
+        args=("morph", "dilate_iter"),
     )
     options = ["rect", "ellipse", "cross"]
-    st.session_state.params["morph"]["kernel_shape"] = st.selectbox(
+    st.selectbox(
         "Kernel shape",
         options=options,
         index=options.index(st.session_state.params["morph"]["kernel_shape"]),
+        key="morph_kernel_shape",
+        on_change=update_param,
+        args=("morph", "kernel_shape"),
     )
 
     st.header("Hough LinesP")
-    st.session_state.params["hough"]["enable"] = st.checkbox(
-        "Enable Hough", value=st.session_state.params["hough"]["enable"]
+    st.checkbox(
+        "Enable Hough",
+        value=st.session_state.params["hough"]["enable"],
+        key="hough_enable",
+        on_change=update_param,
+        args=("hough", "enable"),
     )
-    st.session_state.params["hough"]["rho"] = st.number_input(
+    st.number_input(
         "rho (px)",
         min_value=0.5,
         max_value=5.0,
-        value=st.session_state.params["hough"]["rho"],
         step=0.5,
+        value=st.session_state.params["hough"]["rho"],
+        key="hough_rho",
+        on_change=update_param,
+        args=("hough", "rho"),
     )
-    st.session_state.params["hough"]["theta_deg"] = st.number_input(
+    st.number_input(
         "theta (deg)",
         min_value=0.5,
         max_value=5.0,
-        value=st.session_state.params["hough"]["theta_deg"],
         step=0.5,
+        value=st.session_state.params["hough"]["theta_deg"],
+        key="hough_theta_deg",
+        on_change=update_param,
+        args=("hough", "theta_deg"),
     )
-    st.session_state.params["hough"]["threshold"] = st.number_input(
+    st.number_input(
         "accumulator threshold",
         min_value=1,
         max_value=500,
         value=st.session_state.params["hough"]["threshold"],
-        step=1,
+        key="hough_threshold",
+        on_change=update_param,
+        args=("hough", "threshold"),
     )
-    st.session_state.params["hough"]["min_line_length"] = st.number_input(
+    st.number_input(
         "min line length",
         min_value=1,
         max_value=4000,
-        value=st.session_state.params["hough"]["min_line_length"],
         step=10,
+        value=st.session_state.params["hough"]["min_line_length"],
+        key="hough_min_line_length",
+        on_change=update_param,
+        args=("hough", "min_line_length"),
     )
-    st.session_state.params["hough"]["max_line_gap"] = st.number_input(
+    st.number_input(
         "max line gap",
         min_value=0,
         max_value=200,
         value=st.session_state.params["hough"]["max_line_gap"],
-        step=1,
+        key="hough_max_line_gap",
+        on_change=update_param,
+        args=("hough", "max_line_gap"),
     )
-    st.session_state.params["hough"]["angle_tol_deg"] = st.number_input(
+    st.number_input(
         "angle tolerance (deg)",
         min_value=0.0,
         max_value=15.0,
-        value=st.session_state.params["hough"]["angle_tol_deg"],
         step=0.5,
+        value=st.session_state.params["hough"]["angle_tol_deg"],
+        key="hough_angle_tol_deg",
+        on_change=update_param,
+        args=("hough", "angle_tol_deg"),
     )
 
     st.header("Clustering")
-    st.session_state.params["cluster"]["eps"] = st.number_input(
+    st.number_input(
         "cluster eps (px)",
         min_value=1.0,
         max_value=50.0,
-        value=st.session_state.params["cluster"]["eps"],
         step=1.0,
+        value=st.session_state.params["cluster"]["eps"],
+        key="cluster_eps",
+        on_change=update_param,
+        args=("cluster", "eps"),
     )
 
     st.header("Overlay")
-    st.session_state.params["overlay"]["edge_thickness"] = st.number_input(
+    st.number_input(
         "overlay edge thickness",
         min_value=1,
         max_value=7,
         value=st.session_state.params["overlay"]["edge_thickness"],
-        step=1,
+        key="overlay_edge_thickness",
+        on_change=update_param,
+        args=("overlay", "edge_thickness"),
     )
-    st.session_state.params["overlay"]["alpha"] = st.slider(
-        "overlay alpha", 0.0, 1.0, st.session_state.params["overlay"]["alpha"], 0.05
+    st.slider(
+        "overlay alpha",
+        0.0,
+        1.0,
+        step=0.05,
+        value=st.session_state.params["overlay"]["alpha"],
+        key="overlay_alpha",
+        on_change=update_param,
+        args=("overlay", "alpha"),
     )
-    default_color = f"#{st.session_state.params['overlay']['color_rgb'][0]:02X}{st.session_state.params['overlay']['color_rgb'][1]:02X}{st.session_state.params['overlay']['color_rgb'][2]:02X}"
-    color = st.color_picker("overlay color", default_color)
+
+    # For color picker, we handle it slightly differently as it has no on_change
+    color_hex = st.color_picker(
+        "overlay color",
+        f"#{st.session_state.params['overlay']['color_rgb'][0]:02X}{st.session_state.params['overlay']['color_rgb'][1]:02X}{st.session_state.params['overlay']['color_rgb'][2]:02X}",
+    )
     st.session_state.params["overlay"]["color_rgb"] = tuple(
-        int(color[i : i + 2], 16) for i in (1, 3, 5)
+        int(color_hex[i : i + 2], 16) for i in (1, 3, 5)
     )
+
 
 if uploaded is None:
     st.info("Upload an image to begin.")

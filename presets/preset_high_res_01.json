@@ -1,0 +1,39 @@
+{
+  "preprocess": {
+    "scale": 1,
+    "blur": 0
+  },
+  "canny": {
+    "use_sigma": false,
+    "sigma": 0.12,
+    "low": 74,
+    "high": 164
+  },
+  "morph": {
+    "close_k": 0,
+    "close_iter": 1,
+    "dilate_iter": 0,
+    "kernel_shape": "rect"
+  },
+  "hough": {
+    "enable": true,
+    "rho": 1.5,
+    "theta_deg": 1.0,
+    "threshold": 60,
+    "min_line_length": 20,
+    "max_line_gap": 10,
+    "angle_tol_deg": 0.5
+  },
+  "cluster": {
+    "eps": 4.0
+  },
+  "overlay": {
+    "edge_thickness": 1,
+    "alpha": 0.8,
+    "color_rgb": [
+      255,
+      0,
+      255
+    ]
+  }
+}
