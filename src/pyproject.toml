@@ -1,0 +1,9 @@
+[project]
+name = "pixel-grid-snap"
+version = "0.1.0"
+dependencies = [
+  "opencv-python",
+  "numpy",
+  "Pillow",
+  "streamlit",
+]
