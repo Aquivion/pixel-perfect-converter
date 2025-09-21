@@ -5,6 +5,7 @@ from PIL import Image
 import io
 import json
 import sys
+import hashlib
 
 # Ensure 'src/v2' is on sys.path so 'grid_snap' can be imported when run via Streamlit
 ROOT = Path(__file__).resolve().parents[1]  # points to src/v2
@@ -23,69 +24,81 @@ st.caption(
     "Detect axis-aligned edges, cluster them, and snap a grid that matches your sprite."
 )
 
-# Sidebar controls
+
+# --- helpers -------------------------------------------------
+def bytes_hash(b: bytes) -> str:
+    return hashlib.sha256(b).hexdigest()
+
+
+@st.cache_data(show_spinner=False)
+def compute_result(image_bytes: bytes, P: Params):
+    import io
+    from PIL import Image
+
+    rgb = np.array(Image.open(io.BytesIO(image_bytes)).convert("RGB"))
+    return run(rgb, P)  # your pipeline returns Result dataclass
+
+
+# --- inputs --------------------------------------------------
+uploaded = st.file_uploader(
+    "Upload PNG/JPG", type=["png", "jpg", "jpeg"], key="uploader"
+)
+if uploaded is None:
+    # fall back to demo asset
+    with open("images/medieval_tavern.png", "rb") as f:
+        image_bytes = f.read()
+else:
+    image_bytes = uploaded.read()
+
+# Sidebar params (any change causes a rerun)
 with st.sidebar:
     st.header("Parameters")
-    upscale = st.slider("Upscale (NN)", 1, 5, 2)
-    canny_low = st.slider("Canny low", 0, 200, 40)
-    canny_high = st.slider("Canny high", 1, 400, 120)
-    angle_tol = st.slider("Angle tolerance (°)", 0.0, 10.0, 4.0, 0.5)
-    cluster_eps = st.slider("Cluster ε (px after upscale)", 1, 10, 4)
-    min_support = st.slider("Minimum line support", 1, 50, 6)
-    force_square = st.checkbox("Force square cells", value=False)
-
-    st.markdown("---")
-    st.caption("Hough")
-    h_rho = st.slider("ρ", 1, 3, 1)
-    h_theta = st.slider("θ (deg)", 1, 3, 1)
-    h_thr = st.slider("Threshold", 1, 200, 60)
-    min_len = st.slider("Min line length", 1, 200, 30)
-    max_gap = st.slider("Max line gap", 0, 20, 3)
-
-# File upload or demo image
-uploaded = st.file_uploader("Upload a PNG/JPG", type=["png", "jpg", "jpeg"])
-if uploaded:
-    rgb = np.array(Image.open(uploaded).convert("RGB"))
-else:
-    demo_path = Path(__file__).resolve().parents[1] / "images" / "medieval_tavern.png"
-    rgb = imread_rgba(demo_path)
+    upscale = int(st.slider("Upscale", 1, 5, 2))
+    canny_low = int(st.slider("Canny low", 0, 200, 40))
+    canny_high = int(st.slider("Canny high", 1, 400, 120))
+    angle_tol_deg = float(st.slider("Angle tol (°)", 0.0, 10.0, 4.0, 0.5))
+    cluster_eps = int(st.slider("Cluster ε", 1, 10, 4))
+    min_support = int(st.slider("Min support", 1, 50, 6))
+    force_square_cells = st.checkbox("Force square cells", False)
+    hough_rho = int(st.slider("ρ", 1, 3, 1))
+    hough_theta_deg = int(st.slider("θ (deg)", 1, 3, 1))
+    hough_thresh = int(st.slider("Hough threshold", 1, 200, 60))
+    min_line_len = int(st.slider("Min line length", 1, 200, 30))
+    max_line_gap = int(st.slider("Max line gap", 0, 20, 3))
 
 P = Params(
     upscale=upscale,
     canny_low=canny_low,
     canny_high=canny_high,
-    hough_rho=h_rho,
-    hough_theta_deg=h_theta,
-    hough_thresh=h_thr,
-    min_line_len=min_len,
-    max_line_gap=max_gap,
-    angle_tol_deg=angle_tol,
+    hough_rho=hough_rho,
+    hough_theta_deg=hough_theta_deg,
+    hough_thresh=hough_thresh,
+    min_line_len=min_line_len,
+    max_line_gap=max_line_gap,
+    angle_tol_deg=angle_tol_deg,
     cluster_eps=cluster_eps,
     min_support=min_support,
-    force_square_cells=force_square,
+    force_square_cells=force_square_cells,
 )
 
-if st.button("Run"):
-    res = run(rgb, P)
-    grid_img = draw_grid(res.rgb_up, res.grid)
+# --- compute (cached by image+params) ------------------------
+res = compute_result(image_bytes, P)
 
-    col1, col2 = st.columns(2, gap="large")
-    with col1:
-        st.subheader("Input (upscaled)")
-        st.image(res.rgb_up, use_column_width=True)
-        st.subheader("Edges")
-        st.image(res.edges, use_column_width=True, clamp=True)
+# --- render stays visible across widget changes --------------
+grid_img = draw_grid(res.rgb_up, res.grid)
 
-    with col2:
-        st.subheader("Snapped grid overlay")
-        st.image(grid_img, use_column_width=True)
-        st.markdown(
-            f"""
-            **Spacing:** {res.spacing_x:.2f} × {res.spacing_y:.2f} px  
-            **Origin:** ({res.origin_x:.2f}, {res.origin_y:.2f})  
-            **Lines:** {len(res.grid)}
-            """
-        )
+col1, col2 = st.columns(2)
+with col1:
+    st.subheader("Input (upscaled)")
+    st.image(res.rgb_up, use_column_width=True)
+    st.subheader("Edges")
+    st.image(res.edges, use_column_width=True, clamp=True)
+with col2:
+    st.subheader("Snapped grid overlay")
+    st.image(grid_img, use_column_width=True)
+    st.markdown(
+        f"**Spacing:** {res.spacing_x:.2f} × {res.spacing_y:.2f} · **Origin:** ({res.origin_x:.2f}, {res.origin_y:.2f}) · **Lines:** {len(res.grid)}"
+    )
 
     # Downloads
     out_png = io.BytesIO()
@@ -95,19 +108,4 @@ if st.button("Run"):
         out_png.getvalue(),
         file_name="grid_overlay.png",
         mime="image/png",
-    )
-
-    grid_json = {
-        "origin_x": res.origin_x,
-        "origin_y": res.origin_y,
-        "spacing_x": res.spacing_x,
-        "spacing_y": res.spacing_y,
-        "verticals": [v for k, v in res.grid if k == "v"],
-        "horizontals": [v for k, v in res.grid if k == "h"],
-    }
-    st.download_button(
-        "⬇️ Download grid JSON",
-        json.dumps(grid_json, indent=2),
-        file_name="grid.json",
-        mime="application/json",
     )
